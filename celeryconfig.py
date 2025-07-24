@@ -11,3 +11,6 @@ result_serializer = 'json'
 accept_content = ['json']
 timezone = 'UTC'
 enable_utc = True
+
+task_time_limit = 600        # hard limit in seconds
+task_soft_time_limit = 540   # graceful warning period

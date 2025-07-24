@@ -21,16 +21,22 @@ def check():
     ip = request.form.get('ip_address', '').strip()
     if not ip:
         return jsonify({'error': 'Please provide an IP address'}), 400
-
-    task = check_ip_across_lists_and_policies.delay(ip)
-    return jsonify({'task_id': task.id}), 202
+    # Schedule the Celery task asynchronously
+    async_result = check_ip_across_lists_and_policies.apply_async((ip,), queue='default')
+    # Immediately return 202 Accepted with the task ID
+    return jsonify(task_id=async_result.id), 202
 
 
 @app.route('/status/<task_id>', methods=['GET'])
 def status(task_id):
     res = celery.AsyncResult(task_id)
+    # Grab progress from .info (where update_state(meta={…}) stores it)
+    percent = res.info.get('percent', 0) if isinstance(res.info, dict) else 0
+
     if res.state == 'PENDING':
         return jsonify({'state': res.state}), 202
+    if res.state == 'PROGRESS':
+        return jsonify({'state': res.state, 'percent': percent}), 202
     if res.state == 'FAILURE':
         return jsonify({'state': res.state, 'error': str(res.result)}), 500
     return jsonify({'state': res.state, 'result': res.result})

@@ -12,10 +12,11 @@ services:
       - "5000:5000"
     depends_on:
       - redis
+      - worker
   worker:
     build: .
     env_file: .env
-    command: python -m celery -A tasks.celery worker --loglevel=info
+    command: python -m celery -A tasks.celery worker --loglevel=info --queues=default --autoreload
     depends_on:
       - redis
     user: "1000:1000"  # or the uid:gid you created in Dockerfile

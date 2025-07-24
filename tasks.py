@@ -2,7 +2,7 @@ import os
 import requests
 import re
 from celery import Celery
-from flask import jsonify
+import json
 from ipaddress import ip_address, ip_network
 
 # Initialize Celery
@@ -21,12 +21,12 @@ def is_ip_in_cidr(ip, cidr):
 
 
 def is_ip_excluded(ip):
-    ip_network = ip_network(ip, strict=False)
+    ipnetwork = ip_network(ip, strict=False)
     for cidr in excluded_cidrs:
         excluded_network = ip_network(cidr)
         if (
-            ip_network.subnet_of(excluded_network)
-            and ip_network.prefixlen <= excluded_network.prefixlen
+            ipnetwork.subnet_of(excluded_network)
+            and ipnetwork.prefixlen <= excluded_network.prefixlen
         ):
             return True
     return False
@@ -46,7 +46,6 @@ def scan_cloudflare_lists(ip, api_token, account_id):
     results = []
     # Scan lists
     for list_item in lists_data["result"]:
-        logger.debug(f"Found List name {list_item}")
         list_name = list_item["name"]
         list_id = list_item["id"]
         # Filter to only look in IP Address lists
@@ -94,19 +93,26 @@ def scan_cloudflare_policies(ip, api_token, account_id):
 
 @celery.task(bind=True, name='tasks.check_ip_across_lists_and_policies')
 def check_ip_across_lists_and_policies(self, ip_str: str, ) -> dict:
+    self.update_state(state='PROGRESS', meta={'step': 'Starting', 'percent': 0})
     try:
         # Try parsing as a network (CIDR or single IP)
         ip_network(ip_str, strict=False)
         # Scan and print results
-        self.update_state(state='PROGRESS', meta={'step': 'scan_cloudflare_policies'})
+        self.update_state(state='PROGRESS', meta={'step': 'scan_cloudflare_policies', 'percent': 33})
         PolicyResults = scan_cloudflare_policies(ip_str, API_TOKEN, ACC_ID)
-        self.update_state(state='PROGRESS', meta={'step': 'scan_cloudflare_lists'})
+        self.update_state(state='PROGRESS', meta={'step': 'scan_cloudflare_lists', 'percent': 66})
         ListResults = scan_cloudflare_lists(ip_str, API_TOKEN, ACC_ID)
         for result in PolicyResults:
             print(result)
         for result in ListResults:
             print(result)
-        self.update_state(state='PROGRESS',meta={'step': 'processing results'})
-        return jsonify({'policy': PolicyResults, 'list': ListResults}), 200
+        self.update_state(state='PROGRESS',meta={'step': 'processing results', 'percent': 90 })
+        return {
+            'message': { 
+            'policy': PolicyResults,
+            'list':   ListResults
+            }
+        }
     except ValueError:
+        print(ValueError)
         return {"message": "Invalid IP address or CIDR range. Please try again."}
