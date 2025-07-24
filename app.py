@@ -1,7 +1,7 @@
 import os
 from flask import Flask, render_template, request, jsonify
 from flask_bootstrap import Bootstrap
-from tasks import check_ip_across_zero_trust_and_policies, celery
+from tasks import check_ip_across_lists_and_policies, celery
 
 app = Flask(__name__)
 Bootstrap(app)  # <-- initialize Flask-Bootstrap
@@ -22,7 +22,7 @@ def check():
     if not ip:
         return jsonify({'error': 'Please provide an IP address'}), 400
 
-    task = check_ip_across_zero_trust_and_policies.delay(ip)
+    task = check_ip_across_lists_and_policies.delay(ip)
     return jsonify({'task_id': task.id}), 202
 
 

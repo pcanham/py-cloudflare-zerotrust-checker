@@ -1,6 +1,8 @@
 import os
 import requests
+import re
 from celery import Celery
+from flask import jsonify
 from ipaddress import ip_address, ip_network
 
 # Initialize Celery
@@ -10,91 +12,101 @@ celery.config_from_object('celeryconfig')
 # Cloudflare creds
 API_TOKEN = os.getenv('CLOUDFLARE_API_TOKEN')
 ACC_ID    = os.getenv('CLOUDFLARE_ACCOUNT_ID')
+# Define excluded CIDRs
+excluded_cidrs = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 
-HEADERS = {
-    'Authorization': f'Bearer {API_TOKEN}',
-    'Content-Type': 'application/json'
-}
 
-# RFC1918 networks
-PRIVATE_NETWORKS = [
-    ip_network('10.0.0.0/8'),
-    ip_network('172.16.0.0/12'),
-    ip_network('192.168.0.0/16'),
-]
+def is_ip_in_cidr(ip, cidr):
+    return ip_address(ip) in ip_network(cidr)
 
-def is_private(ip_str: str) -> bool:
-    ip = ip_address(ip_str)
-    return any(ip in net for net in PRIVATE_NETWORKS)
 
-@celery.task(bind=True, name='tasks.check_ip_across_zero_trust_and_policies')
-def check_ip_across_zero_trust_and_policies(self, ip_str: str) -> dict:
-    """
-    For a given IP:
-      1) Iterate all Zero Trust lists, checking membership
-      2) Fetch all Gateway policies and match src_ip/CIDRs
-    """
-    if is_private(ip_str):
-        return {'error': 'IP is within RFC1918 private range'}
+def is_ip_excluded(ip):
+    ip_network = ip_network(ip, strict=False)
+    for cidr in excluded_cidrs:
+        excluded_network = ip_network(cidr)
+        if (
+            ip_network.subnet_of(excluded_network)
+            and ip_network.prefixlen <= excluded_network.prefixlen
+        ):
+            return True
+    return False
 
-    # 1) Zero Trust lists
-    lists_url = f'https://api.cloudflare.com/client/v4/accounts/{ACC_ID}/gateway/lists'
-    resp = requests.get(lists_url, headers=HEADERS)
-    resp.raise_for_status()
-    zt_lists = resp.json().get('result', [])
 
-    total = len(zt_lists)
-    self.update_state(state='PROGRESS', meta={'step': 'fetching_zero_trust_lists', 'total_lists': total})
-
-    lists_summary = []
-    for idx, zt in enumerate(zt_lists, start=1):
-        list_id   = zt['id']
-        list_name = zt.get('name')
-
-        # progress update
-        self.update_state(
-            state='PROGRESS',
-            meta={
-                'step': 'checking_list',
-                'current_list_index': idx,
-                'list_name': list_name
-            }
-        )
-
-        items_url = f'https://api.cloudflare.com/client/v4/accounts/{ACC_ID}/gateway/lists/{list_id}/items'
-        items_resp = requests.get(items_url, headers=HEADERS, params={'match': ip_str})
-        items_resp.raise_for_status()
-        items = items_resp.json().get('result', [])
-
-        lists_summary.append({
-            'list_id':   list_id,
-            'list_name': list_name,
-            'matched':   bool(items),
-            'items':     items
-        })
-
-    # 2) Gateway policies
-    self.update_state(state='PROGRESS', meta={'step': 'fetching_policies'})
-    policies_url = f'https://api.cloudflare.com/client/v4/accounts/{ACC_ID}/gateway/policies'
-    pol_resp = requests.get(policies_url, headers=HEADERS)
-    pol_resp.raise_for_status()
-    policies = pol_resp.json().get('result', [])
-
-    matched_policies = []
-    for p in policies:
-        # assume policy has src_ip or src_cidr fields (adjust if your schema differs)
-        cidrs = p.get('src_ip', []) + p.get('src_cidr', [])
-        for cidr in cidrs:
-            if ip_address(ip_str) in ip_network(cidr):
-                matched_policies.append({
-                    'policy_id':   p.get('id'),
-                    'policy_name': p.get('name'),
-                    'matched_cidr': cidr
-                })
-                break
-
-    return {
-        'ip':               ip_str,
-        'zero_trust_lists': lists_summary,
-        'gateway_policies': matched_policies
+def scan_cloudflare_lists(ip, api_token, account_id):
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json",
     }
+    # Get lists
+    lists_url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}/gateway/lists"
+    )
+    lists_response = requests.get(lists_url, headers=headers)
+    lists_data = lists_response.json()
+    results = []
+    # Scan lists
+    for list_item in lists_data["result"]:
+        logger.debug(f"Found List name {list_item}")
+        list_name = list_item["name"]
+        list_id = list_item["id"]
+        # Filter to only look in IP Address lists
+        if list_item["type"].upper() != "IP":
+            continue
+        # Get list entries
+        list_entries_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/gateway/lists/{list_id}/items"
+        list_entries_response = requests.get(list_entries_url, headers=headers)
+        list_entries_data = list_entries_response.json()
+        for entry in list_entries_data["result"]:
+            if is_ip_in_cidr(ip, entry["value"]) and not is_ip_excluded(entry["value"]):
+                results.append(f"IP {ip} found in list: {list_name}")
+    return results
+
+
+def scan_cloudflare_policies(ip, api_token, account_id):
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json",
+    }
+    # Get policies
+    policies_url = (
+        f"https://api.cloudflare.com/client/v4/accounts/{account_id}/gateway/rules"
+    )
+    policies_response = requests.get(policies_url, headers=headers)
+    policies_data = policies_response.json()
+    results = []
+    # Scan policies
+    for policy_item in policies_data["result"]:
+        policy_name = policy_item["name"]
+        traffic_data = policy_item.get("traffic", "")
+        # Perform string search for IP or CIDR
+        if re.search(r"\b" + re.escape(ip) + r"\b", traffic_data):
+            results.append(f"IP {ip} found in policy: {policy_name}")
+        else:
+            # Check if any CIDR in the traffic data contains the IP
+            for cidr in re.findall(
+                r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b", traffic_data
+            ):
+                if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
+                    results.append(f"IP {ip} found in policy: {policy_name}")
+                    break
+    return results
+
+
+@celery.task(bind=True, name='tasks.check_ip_across_lists_and_policies')
+def check_ip_across_lists_and_policies(self, ip_str: str, ) -> dict:
+    try:
+        # Try parsing as a network (CIDR or single IP)
+        ip_network(ip_str, strict=False)
+        # Scan and print results
+        self.update_state(state='PROGRESS', meta={'step': 'scan_cloudflare_policies'})
+        PolicyResults = scan_cloudflare_policies(ip_str, API_TOKEN, ACC_ID)
+        self.update_state(state='PROGRESS', meta={'step': 'scan_cloudflare_lists'})
+        ListResults = scan_cloudflare_lists(ip_str, API_TOKEN, ACC_ID)
+        for result in PolicyResults:
+            print(result)
+        for result in ListResults:
+            print(result)
+        self.update_state(state='PROGRESS',meta={'step': 'processing results'})
+        return jsonify({'policy': PolicyResults, 'list': ListResults}), 200
+    except ValueError:
+        return {"message": "Invalid IP address or CIDR range. Please try again."}
