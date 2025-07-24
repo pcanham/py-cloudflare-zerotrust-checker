@@ -115,4 +115,4 @@ def check_ip_across_lists_and_policies(self, ip_str: str, ) -> dict:
         }
     except ValueError:
         print(ValueError)
-        return {"message": "Invalid IP address or CIDR range. Please try again."}
+        return {"message": "Invalid IPv4 address. Please try again."}
