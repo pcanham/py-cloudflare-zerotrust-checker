@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block body %}
+  <h1 class="mb-4">Cloudflare Zero Trust & Gateway Policy Checker</h1>
+
+  <form onsubmit="event.preventDefault(); submitForm();" class="mb-3">
+    <div class="form-group">
+      <label for="ip">IP Address</label>
+      <input
+        type="text"
+        id="ip"
+        name="ip_address"
+        class="form-control"
+        placeholder="e.g. 8.8.8.8"
+        required
+      >
+    </div>
+    <button type="submit" class="btn btn-primary mt-2">Search</button>
+  </form>
+
+  <div class="card">
+    <div class="card-body">
+      <pre id="output" class="mb-0" style="white-space: pre-wrap;"></pre>
+    </div>
+  </div>
+
+  <script>
+    async function submitForm() {
+      const ip = document.getElementById('ip').value.trim();
+      if (!ip) return;
+
+      const res = await fetch('/check', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: `ip_address=${encodeURIComponent(ip)}`
+      });
+      const { task_id, error } = await res.json();
+      if (error) return showOutput(error);
+      pollStatus(task_id);
+    }
+
+    function showOutput(msg) {
+      document.getElementById('output').textContent = msg;
+    }
+
+    async function pollStatus(id) {
+      const res = await fetch(`/status/${id}`);
+      const data = await res.json();
+
+      if (data.state === 'PENDING') {
+        setTimeout(() => pollStatus(id), 1000);
+      }
+      else if (data.state === 'SUCCESS') {
+        showOutput(JSON.stringify(data.result, null, 2));
+      }
+      else {
+        showOutput(`Error: ${data.error || 'Unknown'}`);
+      }
+    }
+  </script>
+{% endblock %}

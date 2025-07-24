@@ -1,0 +1,22 @@
+[project]
+name = "cloudflare-zerotrust-checker"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Paul Canham",email = "paul@canham.io"}
+]
+readme = "README.md"
+package-mode = false          # disable auto‐package installation
+requires-python = ">=3.11"
+dependencies = [
+    "flask (>=3.1.1,<4.0.0)",
+    "celery[redis] (>=5.5.3,<6.0.0)",
+    "requests (>=2.32.4,<3.0.0)",
+    "python-dotenv (>=1.1.1,<2.0.0)",
+    "flask-bootstrap (>=3.3.7.1,<4.0.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
