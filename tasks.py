@@ -19,15 +19,16 @@ def is_ip_in_cidr(ip, cidr):
     return ip_address(ip) in ip_network(cidr)
 
 
-def is_ip_excluded(ip):
-    ipnetwork = ip_network(ip, strict=False)
-    for cidr in excluded_cidrs:
-        excluded_network = ip_network(cidr)
-        if (
-            ipnetwork.subnet_of(excluded_network)
-            and ipnetwork.prefixlen <= excluded_network.prefixlen
-        ):
-            return True
+def is_ip_excluded(ip_or_cidr):
+    try:
+        ip_net = ip_network(ip_or_cidr, strict=False)
+    except ValueError:
+        return False  # Invalid IP/CIDR, treat as not excluded
+
+    for excluded in excluded_cidrs:
+        excluded_net = ip_network(excluded)
+        if ip_net.subnet_of(excluded_net) and ip_net.prefixlen <= excluded_net.prefixlen:
+            return True  # Exclude only if it's not more specific
     return False
 
 
