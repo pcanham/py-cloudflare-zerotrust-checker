@@ -2,6 +2,10 @@
 
 {% block body %}
   <h1 class="mb-4">Cloudflare Zero Trust & Gateway Policy Checker</h1>
+  <div class="alert alert-info mt-3">
+  Current Celery Queue Length: {{ queue_length }}
+  </div>
+
   <form onsubmit="submitForm(event)" class="mb-3">
     <div class="form-group">
       <label for="ip">IP Address</label>
