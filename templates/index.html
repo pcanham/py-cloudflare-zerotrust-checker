@@ -1,6 +1,8 @@
+
 {% extends "base.html" %}
 
 {% block body %}
+  <div class="container my-4">
   <h1 class="mb-4">Cloudflare Zero Trust & Gateway Policy Checker</h1>
   <div class="alert alert-info mt-3">
   Current Celery Queue Length: {{ queue_length }}
@@ -108,4 +110,5 @@
       }
     }
   </script>
+  </div>
 {% endblock %}
