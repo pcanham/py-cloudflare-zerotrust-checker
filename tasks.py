@@ -37,9 +37,12 @@ def safe_get_json(response):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err} - Response: {response.text}")
+        raise RuntimeError(f"HTTP error {response.status_code}: {http_err} - Response: {response.text}")
     except ValueError as json_err:
         print(f"JSON decode error: {json_err} - Response: {response.text}")
+    except RuntimeError as e:
+        if "502 Bad Gateway" in str(e):
+            return {"message": "Cloudflare API returned 502 Bad Gateway"}
     return {}
 
 
@@ -56,7 +59,7 @@ def scan_cloudflare_lists(ip, api_token, account_id):
     lists_data = lists_response.json()
     results = []
     # Scan lists
-    for list_item in lists_data["result"]:
+    for list_item in lists_data.get("result", []):
         list_name = list_item["name"]
         list_id = list_item["id"]
         # Filter to only look in IP Address lists
@@ -85,7 +88,7 @@ def scan_cloudflare_policies(ip, api_token, account_id):
     policies_data = safe_get_json(policies_response)
     results = []
     # Scan policies
-    for policy_item in policies_data["result"]:
+    for policy_item in policies_data.get("result", []):
         policy_name = policy_item["name"]
         traffic_data = policy_item.get("traffic", "")
         # Perform string search for IP or CIDR
@@ -129,3 +132,6 @@ def check_ip_across_lists_and_policies(self, ip_str: str, ) -> dict:
     except ValueError as e:
         print(f"ValueError: {e}")
         return {"message": "Invalid IPv4 address. Please try again."}
+    except RuntimeError as e:
+        print(f"RuntimeError: {e}")
+        return {"message": str(e)}
