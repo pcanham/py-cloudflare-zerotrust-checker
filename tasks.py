@@ -83,7 +83,7 @@ def scan_cloudflare_policies(ip, api_token, account_id):
     for p in policies:
         name, traffic = p["name"], p.get("traffic", "")
         if re.search(rf"\b{re.escape(ip)}\b", traffic):
-            results.append(f"IP {ip} found in policy: {name}")
+            results.append(f"IPv4 {ip} found in policy: {name}")
         else:
             for cidr in re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b", traffic):
                 if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
@@ -124,7 +124,7 @@ def scan_cloudflare_lists(ip, api_token, account_id):
             for entry in entries:
                 cidr = entry["value"]
                 if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
-                    results.append(f"IP {ip} found in list: {list_name}")
+                    results.append(f"IPv4 {ip} found in list: {list_name}")
     return results
 
 
@@ -135,7 +135,7 @@ def check_ip_across_lists_and_policies(self, ip_str: str) -> dict:
     try:
         # Validate
         ip_network(ip_str, strict=False)
-        self.update_state(state='PROGRESS', meta={'step': 'Validated IP', 'percent': 5})
+        self.update_state(state='PROGRESS', meta={'step': 'Validated IPv4', 'percent': 5})
 
         # Scan policies
         self.update_state(state='PROGRESS', meta={'step': 'Scanning policies', 'percent': 20})
@@ -153,7 +153,7 @@ def check_ip_across_lists_and_policies(self, ip_str: str) -> dict:
         self.update_state(state='PROGRESS', meta={'step': 'Completed', 'percent': 100})
 
         if not policy_results and not list_results:
-            return {'message': 'IP not found in Zero Trust'}
+            return {'message': 'IPv4 not found in Zero Trust'}
 
         return {'message': {'policy': policy_results, 'list': list_results}}
 
