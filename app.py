@@ -5,8 +5,6 @@ from flask_session import Session
 from tasks import check_ip_across_lists_and_policies, celery
 import redis
 
-r = redis.Redis.from_url(os.getenv('CELERY_BROKER_URL'))
-
 app = Flask(__name__)
 Bootstrap(app)  # <-- initialize Flask-Bootstrap
 
@@ -24,11 +22,7 @@ Session(app)
 
 @app.route('/', methods=['GET'])
 def index():
-    try:
-        queue_length = r.llen("default")  # Replace with your queue name if different
-    except redis.RedisError as e:
-        queue_length = f"Error: {str(e)}"   
-    return render_template("index.html", queue_length=queue_length)
+    return render_template("index.html")
 
 
 @app.route('/check', methods=['POST'])
@@ -47,7 +41,6 @@ def status(task_id):
     res = celery.AsyncResult(task_id)
     # Grab progress from .info (where update_state(meta={…}) stores it)
     percent = res.info.get('percent', 0) if isinstance(res.info, dict) else 0
-
     if res.state == 'PENDING':
         return jsonify({'state': res.state}), 202
     if res.state == 'PROGRESS':
@@ -55,15 +48,6 @@ def status(task_id):
     if res.state == 'FAILURE':
         return jsonify({'state': res.state, 'error': str(res.result)}), 500
     return jsonify({'state': res.state, 'result': res.result})
-
-
-@app.route('/queue-length')
-def queue_length():
-    try:
-        length = r.llen('default')  # 'celery' is the default queue name
-        return jsonify({'queue_length': length})
-    except redis.RedisError as e:
-        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -89,7 +89,6 @@ def scan_cloudflare_policies(ip, api_token, account_id):
                 if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
                     results.append(f"IP {ip} found in policy: {name}")
                     break
-
     return results
 
 
