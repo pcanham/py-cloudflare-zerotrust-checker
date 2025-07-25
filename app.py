@@ -1,6 +1,7 @@
 import os
 from flask import Flask, render_template, request, jsonify
 from flask_bootstrap import Bootstrap
+from flask_session import Session
 from tasks import check_ip_across_lists_and_policies, celery
 import redis
 
@@ -16,7 +17,7 @@ app.config['SESSION_TYPE'] = 'redis'
 app.config['SESSION_REDIS'] = redis.from_url(os.getenv('SESSION_REDIS'))
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_USE_SIGNER'] = True
-
+Session(app)
 
 
 @app.route('/', methods=['GET'])
