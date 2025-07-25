@@ -32,6 +32,17 @@ def is_ip_excluded(ip_or_cidr):
     return False
 
 
+def safe_get_json(response):
+    try:
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err} - Response: {response.text}")
+    except ValueError as json_err:
+        print(f"JSON decode error: {json_err} - Response: {response.text}")
+    return {}
+
+
 def scan_cloudflare_lists(ip, api_token, account_id):
     headers = {
         "Authorization": f"Bearer {api_token}",
@@ -54,7 +65,7 @@ def scan_cloudflare_lists(ip, api_token, account_id):
         # Get list entries
         list_entries_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/gateway/lists/{list_id}/items"
         list_entries_response = requests.get(list_entries_url, headers=headers)
-        list_entries_data = list_entries_response.json()
+        list_entries_data = safe_get_json(list_entries_response)
         for entry in list_entries_data["result"]:
             if is_ip_in_cidr(ip, entry["value"]) and not is_ip_excluded(entry["value"]):
                 results.append(f"IP {ip} found in list: {list_name}")
@@ -71,7 +82,7 @@ def scan_cloudflare_policies(ip, api_token, account_id):
         f"https://api.cloudflare.com/client/v4/accounts/{account_id}/gateway/rules"
     )
     policies_response = requests.get(policies_url, headers=headers)
-    policies_data = policies_response.json()
+    policies_data = safe_get_json(policies_response)
     results = []
     # Scan policies
     for policy_item in policies_data["result"]:
