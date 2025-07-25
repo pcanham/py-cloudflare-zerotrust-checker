@@ -113,6 +113,6 @@ def check_ip_across_lists_and_policies(self, ip_str: str, ) -> dict:
             'list':   ListResults
             }
         }
-    except ValueError:
-        print(ValueError)
+    except ValueError as e:
+        print(f"ValueError: {e}")
         return {"message": "Invalid IPv4 address. Please try again."}
