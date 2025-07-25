@@ -2,13 +2,21 @@ import os
 from flask import Flask, render_template, request, jsonify
 from flask_bootstrap import Bootstrap
 from tasks import check_ip_across_lists_and_policies, celery
+import redis
 
 app = Flask(__name__)
 Bootstrap(app)  # <-- initialize Flask-Bootstrap
 
+app.secret_key = 'your-secret-key'
+
 # (optional) load Celery config into Flask config
 app.config['CELERY_BROKER_URL']   = os.getenv('CELERY_BROKER_URL')
 app.config['CELERY_RESULT_BACKEND'] = os.getenv('CELERY_RESULT_BACKEND')
+app.config['SESSION_TYPE'] = 'redis'
+app.config['SESSION_REDIS'] = redis.from_url(os.getenv('SESSION_REDIS'))
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_USE_SIGNER'] = True
+
 
 
 @app.route('/', methods=['GET'])
