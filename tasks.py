@@ -107,6 +107,8 @@ def check_ip_across_lists_and_policies(self, ip_str: str, ) -> dict:
         for result in ListResults:
             print(result)
         self.update_state(state='PROGRESS',meta={'step': 'processing results', 'percent': 90 })
+        if not PolicyResults and not ListResults:
+            return {'message': 'IP not found in Zero Trust'}        
         return {
             'message': { 
             'policy': PolicyResults,
