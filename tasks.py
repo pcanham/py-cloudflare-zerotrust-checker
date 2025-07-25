@@ -2,7 +2,6 @@ import os
 import requests
 import re
 from celery import Celery
-import json
 from ipaddress import ip_address, ip_network
 
 # Initialize Celery
