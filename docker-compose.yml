@@ -7,9 +7,9 @@ services:
   web:
     build: .
     env_file: .env
-    command: python -m flask run --host=0.0.0.0 --port=5000
+    command: python -m flask run --host=0.0.0.0 --port=8080
     ports:
-      - "5000:5000"
+      - "8080:8080"
     depends_on:
       - redis
       - worker

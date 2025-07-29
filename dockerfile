@@ -1,7 +1,9 @@
 FROM python:3.12-slim
 
+COPY bootstrap/data/Cloudflare_CA.pem /usr/local/share/ca-certificates/Cloudflare_CA.crt
 # Install system deps & Poetry
-RUN apt-get update \
+RUN update-ca-certificates \
+  && apt-get update \
   && apt-get install -y curl build-essential \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --gid 1000 appuser \
@@ -25,4 +27,4 @@ RUN curl -sSL https://install.python-poetry.org | python3 - \
 # Copy your app code
 COPY . .
 
-EXPOSE 5000
+EXPOSE 8080
