@@ -120,14 +120,14 @@ def scan_cloudflare_lists(ip, api_token, account_id):
                 logger.error(f"Failed to fetch items for {list_name}: {e}")
                 continue
 
-        for entry in entries:
-            cidr = entry["value"]
-            description = entry.get("description", "")
-            if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
-                if description:
-                    results.append(f"IPv4 {ip} found in list: {list_name} with a description of \"{description}\"")
-                else:
-                    results.append(f"IPv4 {ip} found in list: {list_name} with no description set in list")
+            for entry in entries:
+                cidr = entry["value"]
+                description = entry.get("description", "")
+                if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
+                    if description:
+                        results.append(f"IPv4 {ip} found in list: {list_name} with a description of \"{description}\"")
+                    else:
+                        results.append(f"IPv4 {ip} found in list: {list_name} no description added into list")
     return results
 
 
