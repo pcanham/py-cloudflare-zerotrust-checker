@@ -1,71 +1,135 @@
-
 {% extends "base.html" %}
 
 {% block body %}
   <div class="container my-4">
-  <h1 class="mb-4">Cloudflare Zero Trust & Gateway Policy Checker</h1>
+    <h1 class="mb-4">Cloudflare Zero Trust & Gateway Policy Checker</h1>
 
-  <form onsubmit="submitForm(event)" class="mb-3">
-    <div class="form-group">
-      <label for="ip">IPv4 Address</label>
-      <input
-        type="text"
-        id="ip"
-        name="ip_address"
-        class="form-control"
-        placeholder="e.g. 8.8.8.8"
-        required
-      >
+    <form onsubmit="submitForm(event)" class="mb-3">
+      <div class="form-group">
+        <label for="ip">IPv4 Address</label>
+        <input
+          type="text"
+          id="ip"
+          name="ip_address"
+          class="form-control"
+          placeholder="e.g. 8.8.8.8"
+          required
+        >
+      </div>
+      <button type="submit" class="btn btn-primary mt-2">Search</button>
+    </form>
+    <br />
+    <!-- Progress bar -->
+    <div class="progress mb-3" style="height: 25px;">
+      <div
+        id="progressBar"
+        class="progress-bar"
+        role="progressbar"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        style="width: 0%;"
+      >0%</div>
     </div>
-    <button type="submit" class="btn btn-primary mt-2">Search</button>
-  </form>
-  <br />
-  <!-- Progress bar -->
-  <div class="progress mb-3" style="height: 25px;">
-    <div
-      id="progressBar"
-      class="progress-bar"
-      role="progressbar"
-      aria-valuemin="0"
-      aria-valuemax="100"
-      style="width: 0%;"
-    >0%</div>
+
+    <!-- Final output -->
+    <div class="card">
+      <div class="card-body">
+        <div id="output" class="mb-0"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- Final output -->
-  <div class="card">
-    <div class="card-body">
-      <pre id="output" class="mb-0" style="white-space: pre-wrap;"></pre>
-    </div>
-  </div>
+  <style>
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 1rem;
+      color: #0d6efd;
+      cursor: pointer;
+    }
+    .styled-list {
+      padding-left: 1.2rem;
+      margin-bottom: 1rem;
+    }
+    .styled-list li {
+      margin-bottom: 0.5rem;
+    }
+    .card-section {
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background-color: #f8f9fa;
+    }
+  </style>
 
   <script>
     const progressBar = document.getElementById('progressBar');
-    const outputEl    = document.getElementById('output');
+    const outputEl = document.getElementById('output');
 
     function updateProgress(percent) {
       const p = Math.min(100, Math.max(0, Math.round(percent)));
-      progressBar.style.width   = p + '%';
-      progressBar.textContent   = p + '%';
+      progressBar.style.width = p + '%';
+      progressBar.textContent = p + '%';
     }
 
     function showOutput(msg) {
-      outputEl.textContent = msg;
+      let data;
+      try {
+        data = typeof msg === 'string' ? JSON.parse(msg) : msg;
+      } catch (e) {
+        outputEl.innerHTML = `<pre>${msg}</pre>`;
+        return;
+      }
+
+      const { list = [], policy = [] } = data.message || {};
+      let html = '';
+
+      if (list.length) {
+        html += `
+          <div class="card-section">
+            <div class="section-title" data-bs-toggle="collapse" data-bs-target="#listSection" aria-expanded="true" aria-controls="listSection">
+              Lists
+            </div>
+            <div id="listSection" class="collapse show">
+              <ul class="styled-list">
+                ${list.map(item => `<li>${item}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+        `;
+      }
+
+      if (policy.length) {
+        html += `
+          <div class="card-section">
+            <div class="section-title" data-bs-toggle="collapse" data-bs-target="#policySection" aria-expanded="true" aria-controls="policySection">
+              Policies
+            </div>
+            <div id="policySection" class="collapse show">
+              <ul class="styled-list">
+                ${policy.map(item => `<li>${item}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+        `;
+      }
+
+      outputEl.innerHTML = html || '<em>No results found.</em>';
     }
 
     async function submitForm(e) {
       e.preventDefault();
-      // reset state
       updateProgress(0);
       showOutput('');
-      
+
       const ip = document.getElementById('ip').value.trim();
       if (!ip) return;
 
       try {
         const res = await fetch('/check', {
           method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: `ip_address=${encodeURIComponent(ip)}`
         });
         const { task_id, error } = await res.json();
@@ -73,39 +137,33 @@
           return showOutput(error);
         }
         pollStatus(task_id);
-      }
-      catch (err) {
+      } catch (err) {
         showOutput(`Request failed: ${err.message}`);
       }
     }
 
     async function pollStatus(id) {
       try {
-        const res  = await fetch(`/status/${id}`);
+        const res = await fetch(`/status/${id}`);
         const data = await res.json();
 
         if (data.state === 'PENDING') {
-          // still queued
           setTimeout(() => pollStatus(id), 1000);
-        }
-        else if (data.state === 'PROGRESS') {
-          // expects data.meta.percent (0–100)
+        } else if (data.state === 'PROGRESS') {
           updateProgress(data?.percent || 0);
           setTimeout(() => pollStatus(id), 1000);
-        }
-        else if (data.state === 'SUCCESS') {
+        } else if (data.state === 'SUCCESS') {
           updateProgress(100);
           showOutput(JSON.stringify(data.result, null, 2));
-        }
-        else {
-          // FAILURE or other terminal state
+        } else {
           showOutput(`Error: ${data.error || 'Unknown error'}`);
         }
-      }
-      catch (err) {
+      } catch (err) {
         showOutput(`Polling failed: ${err.message}`);
       }
     }
   </script>
-  </div>
+
+  <!-- ✅ Bootstrap JS for collapsible functionality (no integrity check) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.ootstrap.bundle.min.js">
 {% endblock %}
