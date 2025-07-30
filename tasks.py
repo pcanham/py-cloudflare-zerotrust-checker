@@ -64,28 +64,6 @@ def safe_get_json(response):
         return {}
 
 
-def scan_cloudflare_policies(ip, api_token, account_id):
-    headers = {
-        "Authorization": f"Bearer {api_token}",
-        "Content-Type": "application/json",
-    }
-    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/gateway/rules"
-    resp = session.get(url, headers=headers)
-    policies = safe_get_json(resp).get("result", [])
-    results = []
-
-    for p in policies:
-        name, traffic = p["name"], p.get("traffic", "")
-        if re.search(rf"\b{re.escape(ip)}\b", traffic):
-            results.append(f"IPv4 {ip} found in policy: {name}")
-        else:
-            for cidr in re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b", traffic):
-                if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
-                    results.append(f"IP {ip} found in policy: {name}")
-                    break
-    return results
-
-
 def scan_cloudflare_lists(ip, api_token, account_id):
     headers = {
         "Authorization": f"Bearer {api_token}",
@@ -98,37 +76,86 @@ def scan_cloudflare_lists(ip, api_token, account_id):
     lists = safe_get_json(resp).get("result", [])
     results = []
 
-    # Parallelize list-item fetches
     with ThreadPoolExecutor(max_workers=8) as executor:
         future_to_list = {}
         for lst in lists:
             if lst.get("type", "").upper() != "IP":
                 continue
             url = f"{base_url}/{lst['id']}/items"
-            # Pass headers as a keyword
             future = executor.submit(session.get, url, headers=headers)
-            future_to_list[future] = lst["name"]
+            future_to_list[future] = {"name": lst["name"], "id": lst["id"]}
 
-        for future, list_name in future_to_list.items():
+        for future, list_info in future_to_list.items():
+            list_name = list_info["name"]
+            list_id = list_info["id"]
             try:
                 entries = safe_get_json(future.result()).get("result", [])
             except Exception as e:
-                logger.error(f"Failed to fetch items for {list_name}: {e}")
+                logger.error(f"Failed to fetch items for {list_name} ({list_id}): {e}")
                 continue
 
             for entry in entries:
                 cidr = entry["value"]
                 description = entry.get("description", "")
                 if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
-                    if description:
-                        results.append(
-                            f'IPv4 {ip} found in list: {list_name} with a description of "{description}"'
-                        )
-                    else:
-                        results.append(
-                            f"IPv4 {ip} found in list: {list_name} no description added into list"
-                        )
+                    results.append(
+                        {
+                            "ip": ip,
+                            "list_id": list_id,
+                            "list_name": list_name,
+                            "description": description or None,
+                        }
+                    )
     return results
+
+
+def scan_cloudflare_policies(ip, api_token, account_id, zt_list_id=[]):
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "application/json",
+    }
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/gateway/rules"
+    resp = session.get(url, headers=headers)
+    policies = safe_get_json(resp).get("result", [])
+    results = []
+    results_list = []
+
+    for p in policies:
+        name, traffic = p["name"], p.get("traffic", "")
+        if re.search(rf"\b{re.escape(ip)}\b", traffic):
+            # results.append(f"IPv4 {ip} found in policy: {name}")
+            results.append(
+                {
+                    "ip": ip,
+                    "policy_name": name,
+                }
+            )
+        else:
+            for cidr in re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b", traffic):
+                if is_ip_in_cidr(ip, cidr) and not is_ip_excluded(cidr):
+                    # results.append(f"IP {ip} found in policy: {name}")
+                    results.append(
+                        {
+                            "ip": ip,
+                            "policy_name": name,
+                        }
+                    )
+                    break
+
+        # Check for list ID usage
+        for list_item in zt_list_id:
+            list_id, list_name = list_item["list_id"], list_item["list_name"]
+            if list_id in traffic:
+                results_list.append(
+                    {
+                        "list_id": list_id,
+                        "list_name": list_name,
+                        "policy_name": name,
+                    }
+                )
+                break
+
+    return results, results_list
 
 
 @celery.task(bind=True, name="tasks.check_ip_across_lists_and_policies")
@@ -141,15 +168,6 @@ def check_ip_across_lists_and_policies(self, ip_str: str) -> dict:
             state="PROGRESS", meta={"step": "Validated IPv4", "percent": 5}
         )
 
-        # Scan policies
-        self.update_state(
-            state="PROGRESS", meta={"step": "Scanning policies", "percent": 20}
-        )
-        policy_results = scan_cloudflare_policies(ip_str, API_TOKEN, ACC_ID)
-        self.update_state(
-            state="PROGRESS", meta={"step": "Policies done", "percent": 40}
-        )
-
         # Scan lists
         self.update_state(
             state="PROGRESS", meta={"step": "Scanning lists", "percent": 60}
@@ -157,15 +175,32 @@ def check_ip_across_lists_and_policies(self, ip_str: str) -> dict:
         list_results = scan_cloudflare_lists(ip_str, API_TOKEN, ACC_ID)
         self.update_state(state="PROGRESS", meta={"step": "Lists done", "percent": 80})
 
+        # Scan policies
+        self.update_state(
+            state="PROGRESS", meta={"step": "Scanning policies", "percent": 20}
+        )
+        policy_results, policy_list_results = scan_cloudflare_policies(
+            ip_str, API_TOKEN, ACC_ID, list_results
+        )
+        self.update_state(
+            state="PROGRESS", meta={"step": "Policies done", "percent": 40}
+        )
+
         # Finalize
-        for r in policy_results + list_results:
+        for r in policy_results + list_results + policy_list_results:
             print(r)
         self.update_state(state="PROGRESS", meta={"step": "Completed", "percent": 100})
 
         if not policy_results and not list_results:
             return {"message": "IPv4 not found in Zero Trust"}
 
-        return {"message": {"policy": policy_results, "list": list_results}}
+        return {
+            "message": {
+                "policy": policy_results,
+                "list": list_results,
+                "policy_list": policy_list_results,
+            }
+        }
 
     except ValueError as e:
         logger.error(f"Invalid IP/CIDR: {e}")

@@ -19,6 +19,7 @@
       <button type="submit" class="btn btn-primary mt-2">Search</button>
     </form>
     <br />
+
     <!-- Progress bar -->
     <div class="progress mb-3" style="height: 25px;">
       <div
@@ -52,7 +53,7 @@
       margin-bottom: 1rem;
     }
     .styled-list li {
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.75rem;
     }
     .card-section {
       border: 1px solid #dee2e6;
@@ -82,33 +83,65 @@
         return;
       }
 
-      const { list = [], policy = [] } = data.message || {};
+      const { list = [], policy = [], policy_list = [] } = data.message || {};
       let html = '';
 
-      if (list.length) {
+      if (Array.isArray(list) && list.length) {
         html += `
           <div class="card-section">
             <div class="section-title" data-bs-toggle="collapse" data-bs-target="#listSection" aria-expanded="true" aria-controls="listSection">
-              Lists
+              IP in Lists
             </div>
             <div id="listSection" class="collapse show">
               <ul class="styled-list">
-                ${list.map(item => `<li>${item}</li>`).join('')}
+                ${list.map(item => `
+                  <li>
+                    <strong>IP:</strong> ${item.ip}<br>
+                    <strong>List Name:</strong> ${item.list_name}<br>
+                    <strong>List ID:</strong> ${item.list_id}<br>
+                    <strong>Description:</strong> ${item.description || '<em>None</em>'}
+                  </li>
+                `).join('')}
               </ul>
             </div>
           </div>
         `;
       }
 
-      if (policy.length) {
+      if (Array.isArray(policy) && policy.length) {
         html += `
           <div class="card-section">
             <div class="section-title" data-bs-toggle="collapse" data-bs-target="#policySection" aria-expanded="true" aria-controls="policySection">
-              Policies
+              IP in Policies
             </div>
             <div id="policySection" class="collapse show">
               <ul class="styled-list">
-                ${policy.map(item => `<li>${item}</li>`).join('')}
+                ${policy.map(item => `
+                  <li>
+                    <strong>IP:</strong> ${item.ip}<br>
+                    <strong>Policy Name:</strong> ${item.policy_name}<br>
+                  </li>
+                `).join('')}
+              </ul>
+            </div>
+          </div>
+        `;
+      }
+
+      if (Array.isArray(policy_list) && policy_list.length) {
+        html += `
+          <div class="card-section">
+            <div class="section-title" data-bs-toggle="collapse" data-bs-target="#policy_listSection" aria-expanded="true" aria-controls="policy_listSection">
+              Lists in Policies
+            </div>
+            <div id="policy_listSection" class="collapse show">
+              <ul class="styled-list">
+                ${policy_list.map(item => `
+                  <li>
+                    <strong>List Name:</strong> ${item.list_name}<br>
+                    <strong>Policy Name:</strong> ${item.policy_name}<br>
+                  </li>
+                `).join('')}
               </ul>
             </div>
           </div>
@@ -164,6 +197,6 @@
     }
   </script>
 
-  <!-- ✅ Bootstrap JS for collapsible functionality (no integrity check) -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.ootstrap.bundle.min.js">
+  <!-- ✅ Bootstrap JS for collapsible functionality -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}
