@@ -1,5 +1,12 @@
 #!/bin/bash
 
+if [[ "$(uname)" == "Darwin" ]]; then
+  echo "Running on macOS. Continuing..."
+else
+  echo "Unsupported OS. Exiting with code 3."
+  exit 3
+fi
+
 # Create directories
 mkdir -p ~/.ca-certificates
 mkdir -p ~/.colima/default
