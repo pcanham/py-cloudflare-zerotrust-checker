@@ -1,9 +1,6 @@
 import os
-import redis
-from datetime import timedelta
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_bootstrap import Bootstrap
-from flask_session import Session
 from tasks import check_ip_across_lists_and_policies, celery
 
 app = Flask(__name__)
@@ -16,15 +13,6 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY")
 app.config["CELERY_BROKER_URL"] = os.getenv("CELERY_BROKER_URL")
 app.config["CELERY_RESULT_BACKEND"] = os.getenv("CELERY_RESULT_BACKEND")
 
-# Session configuration
-app.config["SESSION_TYPE"] = "redis"
-app.config["SESSION_REDIS"] = redis.from_url(os.getenv("SESSION_REDIS"))
-app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_USE_SIGNER"] = True
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
-app.config["SESSION_REFRESH_EACH_REQUEST"] = True
-
-Session(app)
 
 @app.route("/", methods=["GET"])
 def index():
@@ -35,6 +23,7 @@ def index():
     if last_checked_ip == "None":
         last_checked_ip = None
     return render_template("index.html", task_id=task_id, last_checked_ip=last_checked_ip)
+
 
 @app.route("/check", methods=["POST"])
 def check():
@@ -47,6 +36,7 @@ def check():
     session["task_id"] = async_result.id
     session["last_checked_ip"] = ip
     return jsonify(task_id=async_result.id), 202
+
 
 @app.route("/status/<task_id>", methods=["GET"])
 def status(task_id):
