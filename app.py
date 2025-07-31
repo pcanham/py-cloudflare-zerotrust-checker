@@ -22,7 +22,9 @@ def index():
     last_checked_ip = session.get("last_checked_ip")
     if last_checked_ip == "None":
         last_checked_ip = None
-    return render_template("index.html", task_id=task_id, last_checked_ip=last_checked_ip)
+    return render_template(
+        "index.html", task_id=task_id, last_checked_ip=last_checked_ip
+    )
 
 
 @app.route("/check", methods=["POST"])
@@ -31,7 +33,9 @@ def check():
     if not ip:
         return jsonify({"error": "Please provide an IP address"}), 400
     # Schedule the Celery task asynchronously
-    async_result = check_ip_across_lists_and_policies.apply_async((ip,), queue="default")
+    async_result = check_ip_across_lists_and_policies.apply_async(
+        (ip,), queue="default"
+    )
     # Store task_id and IP in session
     session["task_id"] = async_result.id
     session["last_checked_ip"] = ip
