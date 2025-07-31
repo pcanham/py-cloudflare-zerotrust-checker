@@ -170,20 +170,20 @@ def check_ip_across_lists_and_policies(self, ip_str: str) -> dict:
 
         # Scan lists
         self.update_state(
-            state="PROGRESS", meta={"step": "Scanning lists", "percent": 60}
+            state="PROGRESS", meta={"step": "Scanning lists", "percent": 10}
         )
         list_results = scan_cloudflare_lists(ip_str, API_TOKEN, ACC_ID)
-        self.update_state(state="PROGRESS", meta={"step": "Lists done", "percent": 80})
+        self.update_state(state="PROGRESS", meta={"step": "Lists done", "percent": 40})
 
         # Scan policies
         self.update_state(
-            state="PROGRESS", meta={"step": "Scanning policies", "percent": 20}
+            state="PROGRESS", meta={"step": "Scanning policies", "percent": 60}
         )
         policy_results, policy_list_results = scan_cloudflare_policies(
             ip_str, API_TOKEN, ACC_ID, list_results
         )
         self.update_state(
-            state="PROGRESS", meta={"step": "Policies done", "percent": 40}
+            state="PROGRESS", meta={"step": "Policies done", "percent": 80}
         )
 
         # Finalize
