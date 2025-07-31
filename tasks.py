@@ -7,6 +7,7 @@ from ipaddress import ip_address, ip_network
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
+from features_config import FEATURE_FLAGS
 
 # Initialize Celery
 celery = Celery("tasks")
@@ -34,6 +35,10 @@ retry_strategy = Retry(
 )
 adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
 session.mount("https://", adapter)
+
+
+def is_feature_enabled(feature_name):
+    return FEATURE_FLAGS.get(feature_name, False)
 
 
 def is_ip_in_cidr(ip, cidr):
@@ -109,7 +114,7 @@ def scan_cloudflare_lists(ip, api_token, account_id):
     return results
 
 
-def scan_cloudflare_policies(ip, api_token, account_id, zt_list_id=[]):
+def scan_cloudflare_policies(ip, api_token, account_id, zt_list_id=[], port=None,):
     headers = {
         "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json",
@@ -119,6 +124,8 @@ def scan_cloudflare_policies(ip, api_token, account_id, zt_list_id=[]):
     policies = safe_get_json(resp).get("result", [])
     results = []
     results_list = []
+    if is_feature_enabled("port"):
+        results_port = []
 
     for p in policies:
         name, traffic = p["name"], p.get("traffic", "")
@@ -154,13 +161,24 @@ def scan_cloudflare_policies(ip, api_token, account_id, zt_list_id=[]):
                     }
                 )
                 break
-
+        if is_feature_enabled("port"):
+            # Check for port usage
+            if port in traffic:
+                results_port.append(
+                    {
+                        "port": port,
+                        "policy_name": name,
+                        "traffic": traffic,
+                    }
+                )
+            return results, results_list, results_port
     return results, results_list
 
 
 @celery.task(bind=True, name="tasks.check_ip_across_lists_and_policies")
-def check_ip_across_lists_and_policies(self, ip_str: str) -> dict:
+def check_ip_across_lists_and_policies(self, ip_str: str, port) -> dict:
     self.update_state(state="PROGRESS", meta={"step": "Starting", "percent": 0})
+    print(ip_str)
     try:
         # Validate
         ip_network(ip_str, strict=False)
@@ -179,19 +197,20 @@ def check_ip_across_lists_and_policies(self, ip_str: str) -> dict:
         self.update_state(
             state="PROGRESS", meta={"step": "Scanning policies", "percent": 60}
         )
-        policy_results, policy_list_results = scan_cloudflare_policies(
-            ip_str, API_TOKEN, ACC_ID, list_results
+        
+        policy_results, policy_list_results, port_results = scan_cloudflare_policies(
+            ip_str, API_TOKEN, ACC_ID, list_results, port
         )
         self.update_state(
             state="PROGRESS", meta={"step": "Policies done", "percent": 80}
         )
 
         # Finalize
-        for r in policy_results + list_results + policy_list_results:
+        for r in policy_results + list_results + policy_list_results + port_results:
             print(r)
         self.update_state(state="PROGRESS", meta={"step": "Completed", "percent": 100})
 
-        if not policy_results and not list_results:
+        if not policy_results and not list_results and not port_results:
             return {"message": "IPv4 not found in Zero Trust"}
 
         return {

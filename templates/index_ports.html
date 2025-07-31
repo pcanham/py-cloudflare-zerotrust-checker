@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block body %}
+<div class="container my-4">
+  <h1 class="mb-4">Cloudflare Zero Trust List & Gateway Policy Checker</h1>
+
+  <form onsubmit="submitForm(event)" class="mb-3">
+    <div class="form-group">
+      <label for="ip">IPv4 Address</label>
+      <input
+        type="text"
+        id="ip"
+        name="ip_address"
+        class="form-control"
+        placeholder="e.g. 8.8.8.8"
+        value="{{ last_checked_ip or '' }}"
+        required
+      >
+      <label for="ip">Port</label>
+      <input
+        type="text"
+        id="port"
+        name="port"
+        class="form-control"
+        placeholder="e.g. 8080"
+        value="{{ last_checked_port or '' }}"
+      >
+    </div>
+    <div class="mt-2">
+      <button type="submit" class="btn btn-primary">Search</button>
+      <button type="button" class="btn btn-danger" onclick="resetSession()">Reset Session</button>
+    </div>
+  </form>
+  <br />
+  <div class="progress mb-3" style="height: 25px;">
+    <div
+      id="progressBar"
+      class="progress-bar"
+      role="progressbar"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      style="width: 0%;"
+    >0%</div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <div id="output" class="mb-0"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .section-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    color: #0d6efd;
+    cursor: pointer;
+  }
+  .styled-list {
+    padding-left: 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .styled-list li {
+    margin-bottom: 0.75rem;
+  }
+  .card-section {
+    border: 1px solid #dee2e6;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: #f8f9fa;
+  }
+</style>
+
+<script>
+  let pollingActive = true;
+  const progressBar = document.getElementById('progressBar');
+  const outputEl = document.getElementById('output');
+
+  function updateProgress(percent) {
+    const p = Math.min(100, Math.max(0, Math.round(percent)));
+    progressBar.style.width = p + '%';
+    progressBar.textContent = p + '%';
+  }
+
+  function showOutput(msg) {
+    let data;
+    try {
+      data = typeof msg === 'string' ? JSON.parse(msg) : msg;
+    } catch (e) {
+      outputEl.innerHTML = `<pre>${msg}</pre>`;
+      return;
+    }
+
+    const { list = [], policy = [], policy_list = [], port_list = [] } = data.message || {};
+    let html = '';
+
+    if (Array.isArray(list) && list.length) {
+      html += `
+        <div class="card-section">
+          <div class="section-title" data-bs-toggle="collapse" data-bs-target="#listSection" aria-expanded="true" aria-controls="listSection">
+            IP in Lists
+          </div>
+          <div id="listSection" class="collapse show">
+            <ul class="styled-list">
+              ${list.map(item => `
+                <li>
+                  <strong>IP:</strong> ${item.ip}<br>
+                  <strong>List Name:</strong> ${item.list_name}<br>
+                  <strong>List ID:</strong> ${item.list_id}<br>
+                  <strong>Description:</strong> ${item.description || '<em>None</em>'}
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+
+    if (Array.isArray(policy) && policy.length) {
+      html += `
+        <div class="card-section">
+          <div class="section-title" data-bs-toggle="collapse" data-bs-target="#policySection" aria-expanded="true" aria-controls="policySection">
+            IP in Policies
+          </div>
+          <div id="policySection" class="collapse show">
+            <ul class="styled-list">
+              ${policy.map(item => `
+                <li>
+                  <strong>IP:</strong> ${item.ip}<br>
+                  <strong>Policy Name:</strong> ${item.policy_name}
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+
+    if (Array.isArray(policy_list) && policy_list.length) {
+      html += `
+        <div class="card-section">
+          <div class="section-title" data-bs-toggle="collapse" data-bs-target="#policy_listSection" aria-expanded="true" aria-controls="policy_listSection">
+            Lists in Policies
+          </div>
+          <div id="policy_listSection" class="collapse show">
+            <ul class="styled-list">
+              ${policy_list.map(item => `
+                <li>
+                  <strong>List Name:</strong> ${item.list_name}<br>
+                  <strong>Policy Name:</strong> ${item.policy_name}
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+  
+    if (Array.isArray(port_list) && port_list.length) {
+      html += `
+        <div class="card-section">
+          <div class="section-title" data-bs-toggle="collapse" data-bs-target="#port_listSection" aria-expanded="true" aria-controls="port_listSection">
+            Lists in Policies
+          </div>
+          <div id="port_listSection" class="collapse show">
+            <ul class="styled-list">
+              ${port_list.map(item => `
+                <li>
+                  <strong>Port:</strong> ${item.port}<br>
+                  <strong>Policy Name:</strong> ${item.policy_name}
+                </li>
+              `).join('')}
+            </ul>
+          </div>
+        </div>
+      `;
+    }
+
+    outputEl.innerHTML = html || '<em>No results found.</em>';
+  }
+
+  async function submitForm(e) {
+    e.preventDefault();
+    pollingActive = true;
+    updateProgress(0);
+    showOutput('');
+
+    const port = document.getElementById('port').value.trim();
+    const ip = document.getElementById('ip').value.trim();
+
+    if (!ip) return;
+
+    try {
+      const res = await fetch('/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `ip_address=${encodeURIComponent(ip)}&port=${encodeURIComponent(port)}`
+      });
+      const { task_id, error } = await res.json();
+      if (error) {
+        return showOutput(error);
+      }
+      pollStatus(task_id);
+    } catch (err) {
+      showOutput(`Request failed: ${err.message}`);
+    }
+  }
+
+  async function pollStatus(id) {
+    if (!pollingActive) return;
+
+    try {
+      const res = await fetch(`/status/${id}`);
+      const data = await res.json();
+
+      if (!pollingActive) return;
+
+      if (data.state === 'PENDING') {
+        setTimeout(() => pollStatus(id), 1000);
+      } else if (data.state === 'PROGRESS') {
+        updateProgress(data?.percent || 0);
+        setTimeout(() => pollStatus(id), 1000);
+      } else if (data.state === 'SUCCESS') {
+        updateProgress(100);
+        showOutput(JSON.stringify(data.result, null, 2));
+      } else {
+        showOutput(`Error: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      showOutput(`Polling failed: ${err.message}`);
+    }
+  }
+
+  function resetSession() {
+    pollingActive = false;
+    updateProgress(0);
+    progressBar.textContent = '0%';
+    outputEl.innerHTML = '';
+    window.location.href = '/reset-session';
+  }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const taskIdFromSession = "{{ task_id }}";
+  if (taskIdFromSession && taskIdFromSession !== "None") {
+    pollStatus(taskIdFromSession);
+  }
+});
+</script>
+
+<!-- Bootstrap JS for collapsible functionality -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% endblock %}
