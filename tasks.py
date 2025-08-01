@@ -198,19 +198,24 @@ def check_ip_across_lists_and_policies(self, ip_str: str, port) -> dict:
             state="PROGRESS", meta={"step": "Scanning policies", "percent": 60}
         )
         
-        policy_results, policy_list_results, port_results = scan_cloudflare_policies(
-            ip_str, API_TOKEN, ACC_ID, list_results, port
-        )
+        if is_feature_enabled("port"):
+            policy_results, policy_list_results, port_results = scan_cloudflare_policies(
+                ip_str, API_TOKEN, ACC_ID, list_results, port
+            )
+        else:
+            policy_results, policy_list_results = scan_cloudflare_policies(
+                ip_str, API_TOKEN, ACC_ID, list_results
+            )
         self.update_state(
             state="PROGRESS", meta={"step": "Policies done", "percent": 80}
         )
 
         # Finalize
-        for r in policy_results + list_results + policy_list_results + port_results:
+        for r in policy_results + list_results + policy_list_results:
             print(r)
         self.update_state(state="PROGRESS", meta={"step": "Completed", "percent": 100})
 
-        if not policy_results and not list_results and not port_results:
+        if not policy_results and not list_results:
             return {"message": "IPv4 not found in Zero Trust"}
 
         return {
