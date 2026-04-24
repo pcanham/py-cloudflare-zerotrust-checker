@@ -1,0 +1,14 @@
+version: "3"
+
+tasks:
+  install:
+    desc: Install all dependencies
+    cmd: uv sync
+
+  lock:
+    desc: Regenerate uv.lock
+    cmd: uv lock
+
+  update:
+    desc: Update all dependencies to latest allowed versions
+    cmd: uv lock --upgrade

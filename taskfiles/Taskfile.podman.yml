@@ -1,0 +1,40 @@
+version: "3"
+
+vars:
+  WARP_CERT: "{{.HOME}}/.warp/combined_ca.pem"
+
+tasks:
+  ensure:
+    desc: Start the podman machine if it is not already running
+    internal: true
+    status:
+      - podman machine inspect --format '{{`{{.State}}`}}' podman-machine-default | grep -q running
+    cmd: podman machine start
+
+  trust-certs:
+    desc: Copy Warp CA bundle into the podman VM and update the trust store
+    cmds:
+      - podman machine ssh "sudo tee /etc/pki/ca-trust/source/anchors/warp-combined.pem > /dev/null" < {{.WARP_CERT}}
+      - podman machine ssh "sudo update-ca-trust extract"
+
+  ensure-certs:
+    desc: Ensure Warp CA is trusted in the podman VM (no-op if already present)
+    internal: true
+    status:
+      - podman machine ssh "test -f /etc/pki/ca-trust/source/anchors/warp-combined.pem"
+    cmds:
+      - task: trust-certs
+
+  start:
+    desc: Start the podman machine and ensure Warp CA is trusted
+    cmds:
+      - task: ensure
+      - task: ensure-certs
+
+  stop:
+    desc: Stop the podman machine
+    cmd: podman machine stop
+
+  status:
+    desc: Show podman machine status
+    cmd: podman machine list

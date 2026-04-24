@@ -62,20 +62,18 @@ def check():
 @app.route("/status/<task_id>", methods=["GET"])
 def status(task_id):
     res = celery.AsyncResult(task_id)
-    percent = res.info.get("percent", 0) if isinstance(res.info, dict) else 0
+    info = res.info if isinstance(res.info, dict) else {}
+    percent = info.get("percent", 0)
+    step = info.get("step", "")
 
     if res.state == "PENDING":
         return jsonify({"state": res.state}), 202
     if res.state == "PROGRESS":
-        return jsonify({"state": res.state, "percent": percent}), 202
+        return jsonify({"state": res.state, "percent": percent, "step": step}), 202
     if res.state == "FAILURE":
         return jsonify({"state": res.state, "error": str(res.result)}), 500
     if res.state == "SUCCESS":
-        # Clear task_id from session to stop auto-polling
         session.pop("task_id", None)
-        session.pop("last_checked_ip", None)
-        if is_feature_enabled("port"):
-            session.pop("last_checked_port", None)
         return jsonify({"state": res.state, "result": res.result})
     return jsonify({"state": res.state}), 202
 

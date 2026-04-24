@@ -23,16 +23,17 @@
     </div>
   </form>
   <br />
-  <div class="progress mb-3" style="height: 25px;">
+  <div class="progress mb-1" style="height: 25px;">
     <div
       id="progressBar"
-      class="progress-bar"
+      class="progress-bar progress-bar-striped progress-bar-animated"
       role="progressbar"
       aria-valuemin="0"
       aria-valuemax="100"
       style="width: 0%;"
     >0%</div>
   </div>
+  <div id="progressStep" class="text-muted small mb-3" style="min-height: 1.2em;"></div>
 
   <div class="card">
     <div class="card-body">
@@ -68,12 +69,22 @@
 <script>
   let pollingActive = true;
   const progressBar = document.getElementById('progressBar');
+  const progressStep = document.getElementById('progressStep');
   const outputEl = document.getElementById('output');
 
-  function updateProgress(percent) {
+  function updateProgress(percent, step) {
     const p = Math.min(100, Math.max(0, Math.round(percent)));
     progressBar.style.width = p + '%';
     progressBar.textContent = p + '%';
+    progressBar.setAttribute('aria-valuenow', p);
+    if (step) progressStep.textContent = step;
+    if (p >= 100) {
+      progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+      progressBar.classList.add('bg-success');
+    } else {
+      progressBar.classList.add('progress-bar-animated', 'progress-bar-striped');
+      progressBar.classList.remove('bg-success');
+    }
   }
 
   function showOutput(msg) {
@@ -98,7 +109,11 @@
             <ul class="styled-list">
               ${list.map(item => `
                 <li>
-                  <strong>IP:</strong> ${item.ip}<br>
+                  <strong>IP:</strong> ${item.ip}
+                  ${item.match_type === 'exact'
+                    ? '<span class="badge bg-success ms-1">Exact match</span>'
+                    : `<span class="badge bg-warning text-dark ms-1">Within CIDR ${item.matched_cidr}</span>`
+                  }<br>
                   <strong>List Name:</strong> ${item.list_name}<br>
                   <strong>List ID:</strong> ${item.list_id}<br>
                   <strong>Description:</strong> ${item.description || '<em>None</em>'}
@@ -120,7 +135,11 @@
             <ul class="styled-list">
               ${policy.map(item => `
                 <li>
-                  <strong>IP:</strong> ${item.ip}<br>
+                  <strong>IP:</strong> ${item.ip}
+                  ${item.match_type === 'exact'
+                    ? '<span class="badge bg-success ms-1">Exact match</span>'
+                    : `<span class="badge bg-warning text-dark ms-1">Within CIDR ${item.matched_cidr}</span>`
+                  }<br>
                   <strong>Policy Name:</strong> ${item.policy_name}
                 </li>
               `).join('')}
@@ -156,7 +175,8 @@
   async function submitForm(e) {
     e.preventDefault();
     pollingActive = true;
-    updateProgress(0);
+    updateProgress(0, '');
+    progressStep.textContent = '';
     showOutput('');
 
     const ip = document.getElementById('ip').value.trim();
@@ -188,12 +208,14 @@
       if (!pollingActive) return;
 
       if (data.state === 'PENDING') {
+        updateProgress(0, 'Waiting for worker…');
         setTimeout(() => pollStatus(id), 1000);
       } else if (data.state === 'PROGRESS') {
-        updateProgress(data?.percent || 0);
+        updateProgress(data.percent || 0, data.step || '');
         setTimeout(() => pollStatus(id), 1000);
       } else if (data.state === 'SUCCESS') {
-        updateProgress(100);
+        updateProgress(100, 'Complete');
+        progressStep.textContent = '';
         showOutput(JSON.stringify(data.result, null, 2));
       } else {
         showOutput(`Error: ${data.error || 'Unknown error'}`);

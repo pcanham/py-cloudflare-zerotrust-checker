@@ -1,0 +1,25 @@
+version: "3"
+
+vars:
+  PODMAN_SOCKET:
+    sh: podman machine inspect --format "{{.ConnectionInfo.PodmanSocket.Path}}" podman-machine-default 2>/dev/null || echo ""
+
+tasks:
+  web:
+    desc: Run Flask dev server locally
+    env:
+      FLASK_APP: app.py
+      FLASK_ENV: development
+    cmd: uv run flask run --host=0.0.0.0 --port=8080
+
+  worker:
+    desc: Run Celery worker locally
+    cmd: uv run celery -A tasks.celery worker --loglevel=info --queues=default
+
+  redis:
+    desc: Start a local Redis container
+    deps:
+      - ":podman:ensure"
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCKET}}"
+    cmd: docker run --rm -p 6379:6379 redis:6-alpine

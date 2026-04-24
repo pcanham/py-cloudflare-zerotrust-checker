@@ -8,8 +8,8 @@ services:
     build: .
     env_file: .env
     command:
-      - python
-      - -m
+      - uv
+      - run
       - flask
       - run
       - --host=0.0.0.0
@@ -23,8 +23,8 @@ services:
     build: .
     env_file: .env
     command:
-      - python
-      - -m
+      - uv
+      - run
       - celery
       - -A
       - tasks.celery
@@ -33,4 +33,4 @@ services:
       - --queues=default
     depends_on:
       - redis
-    user: "1000:1000"  # or the uid:gid you created in Dockerfile
+    user: "1000:1000"

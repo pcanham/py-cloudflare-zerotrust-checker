@@ -1,0 +1,22 @@
+version: "3"
+
+tasks:
+  lint:
+    desc: Lint with ruff
+    cmd: uv run ruff check .
+
+  lint-fix:
+    desc: Lint and auto-fix with ruff
+    cmd: uv run ruff check --fix .
+
+  format:
+    desc: Format with ruff
+    cmd: uv run ruff format .
+
+  format-check:
+    desc: Check formatting without writing changes
+    cmd: uv run ruff format --check .
+
+  check:
+    desc: Run lint and format check together
+    deps: [lint, format-check]

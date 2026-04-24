@@ -1,0 +1,13 @@
+version: "3"
+
+includes:
+  deps: ./taskfiles/Taskfile.deps.yml
+  podman: ./taskfiles/Taskfile.podman.yml
+  docker: ./taskfiles/Taskfile.docker.yml
+  dev: ./taskfiles/Taskfile.dev.yml
+  code: ./taskfiles/Taskfile.code.yml
+
+tasks:
+  default:
+    desc: List all available tasks
+    cmd: task --list

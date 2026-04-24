@@ -1,0 +1,64 @@
+version: "3"
+
+vars:
+  PODMAN_SOCK:
+    sh: podman machine inspect --format '{{`{{.ConnectionInfo.PodmanSocket.Path}}`}}' podman-machine-default 2>/dev/null || echo ""
+
+tasks:
+  up:
+    desc: Build and start all services
+    deps:
+      - ":podman:ensure"
+      - ":podman:ensure-certs"
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCK}}"
+    cmds:
+      - docker-compose up --build
+
+  up-detached:
+    desc: Build and start all services in the background
+    deps:
+      - ":podman:ensure"
+      - ":podman:ensure-certs"
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCK}}"
+    cmds:
+      - docker-compose up --build -d
+
+  down:
+    desc: Stop and remove all services
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCK}}"
+    cmds:
+      - docker-compose down
+
+  logs:
+    desc: Tail logs from all services
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCK}}"
+    cmds:
+      - docker-compose logs -f
+
+  logs-web:
+    desc: Tail logs from the web service
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCK}}"
+    cmds:
+      - docker-compose logs -f web
+
+  logs-worker:
+    desc: Tail logs from the worker service
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCK}}"
+    cmds:
+      - docker-compose logs -f worker
+
+  build:
+    desc: Build images without starting
+    deps:
+      - ":podman:ensure"
+      - ":podman:ensure-certs"
+    env:
+      DOCKER_HOST: "unix://{{.PODMAN_SOCK}}"
+    cmds:
+      - docker-compose build
